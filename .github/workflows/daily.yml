@@ -1,0 +1,52 @@
+name: Daily News Video
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - run: sudo apt update && sudo apt install ffmpeg -y
+      
+      - run: pip install requests feedparser gtts moviepy
+      
+      - name: Create video
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          python3 -c "
+import requests
+import feedparser
+from gtts import gTTS
+from moviepy import *
+from datetime import datetime
+
+feed = feedparser.parse('https://venturebeat.com/category/ai/feed/')
+title = feed.entries[0].title
+
+headers = {'Authorization': f'Bearer {GROQ_API_KEY}', 'Content-Type': 'application/json'}
+body = {'model': 'llama-3.3-70b-versatile', 'messages': [{'role': 'user', 'content': f'30-sec script about {title}. Max 200 words.'}]}
+r = requests.post('https://api.groq.com/openai/v1/chat/completions', headers=headers, json=body)
+script = r.json()['choices'][0]['message']['content']
+
+tts = gTTS(script[:500], lang='en', slow=False)
+tts.save('a.mp3')
+audio = AudioFileClip('a.mp3')
+clip = ColorClip(size=(720,1280), color=(0,100,200), duration=audio.duration)
+clip.with_audio(audio).write_videofile('video.mp4', fps=15, preset='ultrafast', logger=None)
+print('Video ready')
+"
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: video
+          path: video.mp4
