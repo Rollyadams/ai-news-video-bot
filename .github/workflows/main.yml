@@ -20,18 +20,15 @@ jobs:
           sudo apt install ffmpeg -y
           pip install requests feedparser gtts moviepy pillow
       
-      - name: Generate video
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      - name: Create script file
         run: |
-          python << 'PYTHON'
-import requests
-import feedparser
+          echo 'import requests, feedparser, os
 from gtts import gTTS
 from moviepy import *
 from datetime import datetime
 
-feed = feedparser.parse('https://venturebeat.com/category/ai/feed/')
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+feed = feedparser.parse("https://venturebeat.com/category/ai/feed/")
 title = feed.entries[0].title
 
 url = "https://api.groq.com/openai/v1/chat/completions"
@@ -40,19 +37,22 @@ body = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "conte
 r = requests.post(url, headers=headers, json=body)
 script = r.json()["choices"][0]["message"]["content"]
 
-tts = gTTS(script[:500], lang='en', slow=False)
+tts = gTTS(script[:500], lang="en", slow=False)
 tts.save("audio.mp3")
 
 audio = AudioFileClip("audio.mp3")
 clip = ColorClip(size=(720, 1280), color=(0, 100, 200), duration=audio.duration)
 video = clip.with_audio(audio)
 video.write_videofile("video.mp4", fps=15, preset="ultrafast", logger=None)
-
-print("Video created successfully")
-PYTHON
+print("Done")' > make_video.py
+      
+      - name: Run video generator
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python make_video.py
       
       - name: Upload video
         uses: actions/upload-artifact@v4
         with:
-          name: daily-news-video
+          name: daily-video
           path: video.mp4
